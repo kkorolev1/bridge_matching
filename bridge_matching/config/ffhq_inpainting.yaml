@@ -1,0 +1,45 @@
+task_name: ffhq_inpainting
+batch_size: 8
+resume: false
+
+logging:
+  project: bridge_matching
+  #resume: False
+  mode: online
+  name: ${now:%Y.%m.%d-%H.%M.%S}_${task_name}
+  tags: ["${task_name}"]
+  id: null
+  group: null
+
+model: 
+  _target_: bridge_matching.model.DummyUnet
+
+loss:
+  _target_: bridge_matching.loss.BridgeMatchingLoss
+
+data:
+  train:
+    batch_size: ${batch_size}
+    num_workers: 5
+    datasets:
+      - _target_: bridge_matching.dataset.FFHQDataset
+        root_dir: datasets/ffhq/train
+  test:
+    batch_size: ${batch_size}
+    num_workers: 5
+    datasets:
+      - _target_: bridge_matching.dataset.FFHQDataset
+        root_dir: datasets/ffhq/test
+
+optimizer:
+  _target_: torch.optim.Adam
+  lr: 3e-4
+
+lr_scheduler:
+  _target_: torch.optim.lr_scheduler.ExponentialLR
+  gamma: 1
+
+trainer:
+  log_step: 50
+  len_epoch: 1
+  epochs: 1

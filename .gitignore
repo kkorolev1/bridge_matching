@@ -1,0 +1,4 @@
+datasets/*
+edm/*
+**/__pycache__/**
+outputs/**
