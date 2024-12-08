@@ -57,16 +57,19 @@ def main(config: DictConfig):
     optimizer = instantiate(config.optimizer, trainable_params)
     lr_scheduler = instantiate(config.lr_scheduler, optimizer)
 
-    if accelerator.is_main_process:
-        num_params = sum([np.prod(p.size()) for p in trainable_params])
-        logger.info(f"Trainable parameters {num_params}")
-
     model, optimizer, lr_scheduler = accelerator.prepare(model, optimizer, lr_scheduler)
     for k, v in zip(dataloaders.keys(), accelerator.prepare(*dataloaders.values())):
         dataloaders[k] = v
     device = model.device
-
     # accelerator.register_for_checkpointing(lr_scheduler)
+    if accelerator.is_main_process:
+        num_params = sum(
+            [
+                np.prod(p.size())
+                for p in filter(lambda p: p.requires_grad, model.parameters())
+            ]
+        )
+        logger.info(f"Trainable parameters {num_params}")
 
     trainer = Trainer(
         model,

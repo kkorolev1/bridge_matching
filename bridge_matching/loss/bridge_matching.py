@@ -15,4 +15,4 @@ class BridgeMatchingLoss:
         gt_cond_vel = (x1 - xt) / (1 - t[:, None, None, None])
         loss = ((pred_vel - gt_cond_vel) ** 2).mean()
 
-        return {"loss": loss}
+        return {"loss": loss, "pred_vel": pred_vel, "gt_cond_vel": gt_cond_vel}

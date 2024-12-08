@@ -10,7 +10,11 @@ class FFHQDataset(Dataset):
         super().__init__()
         self.dataset = load_from_disk(root_dir)
         self.transform = v2.Compose(
-            [v2.ToImage(), v2.ToDtype(torch.float32, scale=True)]
+            [
+                v2.ToImage(),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]
         )
 
     def __getitem__(self, index):

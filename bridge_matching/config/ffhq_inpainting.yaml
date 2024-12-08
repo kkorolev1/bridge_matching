@@ -1,9 +1,9 @@
 task_name: ffhq_inpainting
-batch_size: 8
+batch_size: 32
 resume: false
 
 logging:
-  debug: true
+  debug: false
   project: bridge_matching
   #resume: False
   mode: online
@@ -17,35 +17,53 @@ model:
 
 loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss
-  gamma: 0.1
+  gamma: 0.5
 
 transform:
   _target_: bridge_matching.transform.InpaintingTransform
+
+# data:
+#   train:
+#     batch_size: ${batch_size}
+#     num_workers: 5
+#     datasets:
+#       - _target_: bridge_matching.dataset.FFHQDataset
+#         root_dir: datasets/ffhq/train
+#   test:
+#     batch_size: ${batch_size}
+#     num_workers: 5
+#     datasets:
+#       - _target_: bridge_matching.dataset.FFHQDataset
+#         root_dir: datasets/ffhq/test
 
 data:
   train:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: bridge_matching.dataset.FFHQDataset
-        root_dir: datasets/ffhq/train
+      - _target_: bridge_matching.dataset.ColoredMNIST
+        root: datasets/colored_mnist
+        train: true
+        download: true
   test:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: bridge_matching.dataset.FFHQDataset
-        root_dir: datasets/ffhq/test
+      - _target_: bridge_matching.dataset.ColoredMNIST
+        root: datasets/colored_mnist
+        train: false
+        download: true
 
 optimizer:
   _target_: torch.optim.Adam
-  lr: 3e-4
+  lr: 1e-4
 
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.ExponentialLR
   gamma: 1
 
 trainer:
-  log_step: 50
-  len_epoch: 1000
+  log_step: 100
+  len_epoch: 50000
   epochs: 1
   grad_norm_clip: 100

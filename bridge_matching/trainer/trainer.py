@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-import logging
-from bridge_matching.utils import inf_loop
+from torchvision.utils import make_grid
+from bridge_matching.utils import inf_loop, tensor_to_image
 
 
 class Trainer:
@@ -79,20 +79,30 @@ class Trainer:
                             epoch, self._progress(batch_idx), batch["loss"]
                         )
                     )
-                log_step = {
+                log_scalars = {
                     "epoch": epoch,
                     "loss": batch["loss"],
                     "lr": self.lr_scheduler.get_last_lr()[0],
                 }
                 self.accelerator.log(
-                    log_step, step=self.get_global_step(epoch, batch_idx)
+                    log_scalars, step=self.get_global_step(epoch, batch_idx)
                 )
+                self.log_images(batch, self.get_global_step(epoch, batch_idx))
 
             if batch_idx + 1 >= self.len_epoch:
                 break
 
         for part, dataloader in self.evaluation_dataloaders.items():
-            val_log = self._evaluation_epoch(epoch, part, dataloader)
+            self._evaluation_epoch(epoch, part, dataloader)
+
+    def log_images(self, batch, step):
+        images = torch.cat(
+            [batch["x0"], batch["x1"], batch["pred_vel"], batch["gt_cond_vel"]], dim=0
+        )
+        image_grid = make_grid(images, nrow=batch["x0"].shape[0])
+        self.accelerator.trackers[0].log_images(
+            {"grid": [tensor_to_image(image_grid)]}, step=step
+        )
 
     def get_global_step(self, epoch, batch_idx):
         return (epoch - 1) * self.len_epoch + batch_idx
@@ -109,7 +119,9 @@ class Trainer:
         self.optimizer.step()
         self.lr_scheduler.step()
         self.optimizer.zero_grad()
-        return {"loss": loss_dict["loss"].item()}
+        result_dict = {"x0": x0, "x1": x1}
+        result_dict.update(loss_dict)
+        return result_dict
 
     @torch.no_grad()
     def _evaluation_epoch(self, epoch, part, dataloader):
@@ -126,10 +138,9 @@ class Trainer:
                 desc=part,
                 total=len(dataloader),
             ):
-                batch = self.process_batch(
-                    batch,
-                    batch_idx,
-                )
+                # TODO: sample \hat{x1} from x0 using SDE and compare with true x1
+                # log x0, \hat{x1}, x1
+                pass
 
     def _progress(self, batch_idx):
         base = "[{}/{} ({:.0f}%)]"
