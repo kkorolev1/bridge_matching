@@ -3,6 +3,7 @@ batch_size: 8
 resume: false
 
 logging:
+  debug: true
   project: bridge_matching
   #resume: False
   mode: online
@@ -12,10 +13,14 @@ logging:
   group: null
 
 model: 
-  _target_: bridge_matching.model.DummyUnet
+  _target_: bridge_matching.model.UNet
 
 loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss
+  gamma: 0.1
+
+transform:
+  _target_: bridge_matching.transform.InpaintingTransform
 
 data:
   train:
@@ -41,11 +46,6 @@ lr_scheduler:
 
 trainer:
   log_step: 50
-  len_epoch: 1
+  len_epoch: 1000
   epochs: 1
-  save_dir: "./"
-
-accelerate:
-  _target_: accelerate.Accelerator
-  mixed_precision: fp16
-  gradient_accumulation_steps: 2
+  grad_norm_clip: 100

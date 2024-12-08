@@ -1,3 +1,3 @@
-from .unet import DummyUnet
+from .unet import UNet
 
-__all__ = ["DummyUnet"]
+__all__ = ["UNet"]

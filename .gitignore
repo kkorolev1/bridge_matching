@@ -1,4 +1,6 @@
 datasets/*
-edm/*
+edm/**
 **/__pycache__/**
 outputs/**
+wandb/**
+logs/**
