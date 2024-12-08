@@ -43,3 +43,9 @@ trainer:
   log_step: 50
   len_epoch: 1
   epochs: 1
+  save_dir: "./"
+
+accelerate:
+  _target_: accelerate.Accelerator
+  mixed_precision: fp16
+  gradient_accumulation_steps: 2

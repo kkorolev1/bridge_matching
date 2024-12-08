@@ -136,4 +136,4 @@ class Trainer:
     
     def __save_model(self):
         self.accelerator.wait_for_everyone()
-        self.accelerator.save_model(self.model, self.config["save_dir"])
+        self.accelerator.save_model(self.model, self.config.trainer.save_dir)
