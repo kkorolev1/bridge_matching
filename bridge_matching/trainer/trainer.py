@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
-
+from accelerate import Accelerator
 from bridge_matching.utils import inf_loop
 
 
@@ -17,6 +17,7 @@ class Trainer:
         dataloaders,
         device,
         skip_oom=True,
+        accelerator=None
     ):
         self.model = model
         self.criterion = criterion
@@ -34,23 +35,17 @@ class Trainer:
         self.log_step = config.trainer.log_step
         self.start_epoch = 1
         self.epochs = config.trainer.epochs
+        self.accelerator = accelerator
         if config.resume:
             self._resume_checkpoint(config.resume)
 
-    @staticmethod
-    def move_batch_to_device(batch, device: torch.device):
-        """
-        Move all necessary tensors to the HPU
-        """
-        for tensor_for_gpu in batch.keys():
-            batch[tensor_for_gpu] = batch[tensor_for_gpu].to(device)
-        return batch
+        self.accelerator.init_trackers(
+            "BMProject",
+            config={"Loss": None,
+            "epoch": self.start_epoch,
+            "lr": config.optimizer.lr}
+        )
 
-    def _clip_grad_norm(self):
-        if self.config["trainer"].get("grad_norm_clip", None):
-            clip_grad_norm_(
-                self.model.parameters(), self.config["trainer"]["grad_norm_clip"]
-            )
 
     def train(self):
         for epoch in range(self.start_epoch, self.epochs + 1):
@@ -64,35 +59,35 @@ class Trainer:
         :return: A log that contains average loss and metric in this epoch.
         """
         self.model.train()
-        self.writer.add_scalar("epoch", epoch)
+        self.accelerator.log({"epoch" : epoch})
+
         for batch_idx, batch in enumerate(
             tqdm(self.train_dataloader, desc="train", total=self.len_epoch)
         ):
-            try:
-                batch = self.process_batch(batch, batch_idx)
-            except RuntimeError as e:
-                if "out of memory" in str(e) and self.skip_oom:
-                    self.logger.warning("OOM on batch. Skipping batch.")
-                    for p in self.model.parameters():
-                        if p.grad is not None:
-                            del p.grad  # free some memory
-                    torch.cuda.empty_cache()
-                    continue
-                else:
-                    raise e
+            with self.accelerator.accumulate(self.model): # grad accum
+                try:
+                    batch = self.process_batch(batch, batch_idx)
+                except RuntimeError as e:
+                    if "out of memory" in str(e) and self.skip_oom:
+                        self.logger.warning("OOM on batch. Skipping batch.")
+                        for p in self.model.parameters():
+                            if p.grad is not None:
+                                del p.grad  # free some memory
+                        torch.cuda.empty_cache()
+                        continue
+                    else:
+                        raise e
+
             if batch_idx % self.log_step == 0:
                 self.logger.debug(
                     "Train Epoch: {} {} Loss: {:.6f}".format(
                         epoch, self._progress(batch_idx), batch["loss"].item()
                     )
                 )
-                self.writer.add_scalar(
-                    "learning rate", self.lr_scheduler.get_last_lr()[0]
-                )
-                # self._log_predictions(**batch, is_train=True)
-                self._log_scalars(self.train_metrics)
-                # we don't want to reset train metrics at the start of every epoch
-                # because we are interested in recent train metrics
+                self.accelerator.log(
+                    {"lr", self.lr_scheduler.get_last_lr()[0]}
+                ) # TODO: Add logging of other things
+
 
             if batch_idx + 1 >= self.len_epoch:
                 break
@@ -101,7 +96,12 @@ class Trainer:
             val_log = self._evaluation_epoch(epoch, part, dataloader)
 
     def process_batch(self, batch, batch_idx):
-        batch = self.move_batch_to_device(batch, self.device)
+
+        # TODO: Add self.accelerator.backward(loss), mixed prec 
+        if self.accelerator.sync_gradients: 
+            self.accelerator.clip_grad_norm_(self.model.parameters(),
+                                                self.config["trainer"]["grad_norm_clip"])
+            
         return batch
 
     @torch.no_grad()
@@ -133,3 +133,7 @@ class Trainer:
             current = batch_idx
             total = self.len_epoch
         return base.format(current, total, 100.0 * current / total)
+    
+    def __save_model(self):
+        self.accelerator.wait_for_everyone()
+        self.accelerator.save_model(self.model, self.config["save_dir"])

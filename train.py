@@ -26,8 +26,7 @@ np.random.seed(SEED)
 @hydra.main(version_base=None, config_path="bridge_matching/config")
 def main(config: DictConfig):
     OmegaConf.resolve(config)
-
-    accelerator = Accelerator(log_with="wandb")
+    accelerator = instantiate(config.accelerate)
     wandb_config = OmegaConf.to_container(config.logging, resolve=True)
     # wandb_config.pop("project")
     # accelerator.init_trackers(
@@ -51,6 +50,8 @@ def main(config: DictConfig):
         dataloaders[k] = v
     device = model.device
 
+    accelerator.register_for_checkpointing(lr_scheduler)
+
     trainer = Trainer(
         model,
         loss_module,
@@ -59,6 +60,7 @@ def main(config: DictConfig):
         config=config,
         dataloaders=dataloaders,
         device=device,
+        accelerator=accelerator
     )
 
     trainer.train()
