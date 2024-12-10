@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from torchvision.utils import make_grid
 from bridge_matching.utils import inf_loop, tensor_to_image
-from sampler import sample_euler
+from bridge_matching.sampler import sample_euler
 
 
 class Trainer:
@@ -19,6 +19,7 @@ class Trainer:
         accelerator,
         transform,
         logger,
+        sampling_params,
         skip_oom=True,
     ):
         self.model = model
@@ -40,15 +41,10 @@ class Trainer:
         self.start_epoch = 1
         self.epochs = config.trainer.epochs
         self.accelerator = accelerator
+        self.sampling_params = sampling_params
         if config.resume:
             self._resume_checkpoint(config.resume)
 
-        self.sampling_params = {
-                                'sigma_min': 0.02,
-                                'sigma_max': 80.0,
-                                'num_steps': 20, 
-                                'rho': 7.0,
-                                }
     def train(self):
         for epoch in range(self.start_epoch, self.epochs + 1):
             self._train_epoch(epoch)
@@ -104,20 +100,21 @@ class Trainer:
 
     def log_images(self, batch, step):
         images = torch.cat(
-            [batch["x0"], batch["x1"], batch["pred_vel"], batch["gt_cond_vel"]], dim=0
+            [batch["x_orig"], batch["x_trans"], batch["pred_vf"], batch["gt_cond_vf"]],
+            dim=0,
         )
-        image_grid = make_grid(images, nrow=batch["x0"].shape[0])
+        image_grid = make_grid(images, nrow=batch["x_orig"].shape[0])
         self.accelerator.trackers[0].log_images(
-            {"grid": [tensor_to_image(image_grid)]}, step=step
+            {"train_grid": [tensor_to_image(image_grid)]}, step=step
         )
 
     def get_global_step(self, epoch, batch_idx):
         return (epoch - 1) * self.len_epoch + batch_idx
 
     def train_step(self, batch, batch_idx):
-        x0 = batch
-        x1 = self.transform(x0)
-        loss_dict = self.criterion(self.model, x0, x1)
+        x_orig = batch
+        x_trans = self.transform(x_orig)
+        loss_dict = self.criterion(self.model, x_orig, x_trans)
         self.accelerator.backward(loss_dict["loss"])
         if self.accelerator.sync_gradients:
             self.accelerator.clip_grad_norm_(
@@ -126,7 +123,7 @@ class Trainer:
         self.optimizer.step()
         self.lr_scheduler.step()
         self.optimizer.zero_grad()
-        result_dict = {"x0": x0, "x1": x1}
+        result_dict = {"x_orig": x_orig, "x_trans": x_trans}
         result_dict.update(loss_dict)
         return result_dict
 
@@ -145,19 +142,34 @@ class Trainer:
                 desc=part,
                 total=len(dataloader),
             ):
-                # TODO: params & gamma, make it more pretty? ebal rot 
-                x_0 = batch
-                hat_x1 = sample_euler(self.model, x_0, self.sampling_params, gamma=1) 
-                gt_x1 = self.transform(x_0)
-                res_dct = {"x_0": x_0, "x_1": gt_x1, "hat_x1": hat_x1}
-                images = torch.cat(
-                    [res_dct["x0"],
-                     res_dct["x1"], 
-                     res_dct["hat_x1"]], dim=0)
-                image_grid = make_grid(images, nrow=batch["x0"].shape[0])
-                self.accelerator.trackers[0].log_images(
-                    {"grid": [tensor_to_image(image_grid)]}, step=self.get_global_step(epoch, batch_idx))
-    
+                # TODO: Calc FID
+                pass
+        self.log_test_batch(batch, epoch)
+
+    def log_test_batch(self, batch, epoch, n_pictures_sampling=8):
+        x_orig = batch
+        x_trans = self.transform(x_orig)
+        x_pred, trajectory = sample_euler(
+            self.model, x_trans, self.sampling_params, save_history=True
+        )
+        images = torch.cat([x_orig, x_trans, x_pred], dim=0)
+        image_grid = make_grid(images, nrow=x_orig.shape[0])
+        self.accelerator.trackers[0].log_images(
+            {"test_grid": [tensor_to_image(image_grid)]},
+            step=self.get_global_step(epoch, self.len_epoch),
+        )
+
+        trajectory_len = len(trajectory)
+        trajectory = torch.stack(trajectory, dim=0)
+        trajectory = trajectory[:, :n_pictures_sampling, ...]
+        trajectory = trajectory.permute(1, 0, 2, 3, 4).reshape(
+            -1, *trajectory.shape[-3:]
+        )
+        trajectory_grid = make_grid(trajectory, nrow=trajectory_len)
+        self.accelerator.trackers[0].log_images(
+            {"test_trajectory": [tensor_to_image(trajectory_grid)]},
+            step=self.get_global_step(epoch, self.len_epoch),
+        )
 
     def _progress(self, batch_idx):
         base = "[{}/{} ({:.0f}%)]"

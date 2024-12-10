@@ -15,9 +15,14 @@ logging:
 model: 
   _target_: bridge_matching.model.UNet
 
+sampler:
+  num_steps: 20
+  vis_steps: 10
+  gamma: 0.5
+
 loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss
-  gamma: 0.5
+  gamma: ${sampler.gamma}
 
 transform:
   _target_: bridge_matching.transform.InpaintingTransform
@@ -64,6 +69,6 @@ lr_scheduler:
 
 trainer:
   log_step: 100
-  len_epoch: 50000
-  epochs: 1
+  len_epoch: 1000
+  epochs: 30
   grad_norm_clip: 100
