@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from torchvision.utils import make_grid
 from bridge_matching.utils import inf_loop, tensor_to_image
+from sampler import sample_euler
 
 
 class Trainer:
@@ -42,6 +43,12 @@ class Trainer:
         if config.resume:
             self._resume_checkpoint(config.resume)
 
+        self.sampling_params = {
+                                'sigma_min': 0.02,
+                                'sigma_max': 80.0,
+                                'num_steps': 20, 
+                                'rho': 7.0,
+                                }
     def train(self):
         for epoch in range(self.start_epoch, self.epochs + 1):
             self._train_epoch(epoch)
@@ -138,9 +145,19 @@ class Trainer:
                 desc=part,
                 total=len(dataloader),
             ):
-                # TODO: sample \hat{x1} from x0 using SDE and compare with true x1
-                # log x0, \hat{x1}, x1
-                pass
+                # TODO: params & gamma, make it more pretty? ebal rot 
+                x_0 = batch
+                hat_x1 = sample_euler(self.model, x_0, self.sampling_params, gamma=1) 
+                gt_x1 = self.transform(x_0)
+                res_dct = {"x_0": x_0, "x_1": gt_x1, "hat_x1": hat_x1}
+                images = torch.cat(
+                    [res_dct["x0"],
+                     res_dct["x1"], 
+                     res_dct["hat_x1"]], dim=0)
+                image_grid = make_grid(images, nrow=batch["x0"].shape[0])
+                self.accelerator.trackers[0].log_images(
+                    {"grid": [tensor_to_image(image_grid)]}, step=self.get_global_step(epoch, batch_idx))
+    
 
     def _progress(self, batch_idx):
         base = "[{}/{} ({:.0f}%)]"
