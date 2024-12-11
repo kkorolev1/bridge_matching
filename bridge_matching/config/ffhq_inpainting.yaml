@@ -15,14 +15,17 @@ logging:
 model: 
   _target_: bridge_matching.model.UNet
 
-sampler:
+bridge:
+  _target_: bridge_matching.bridge.BrownianBridge
+  gamma: 0.5
+
+sampling_params:
   num_steps: 20
   vis_steps: 10
-  gamma: 0.5
+  timesteps: uniform
 
 loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss
-  gamma: ${sampler.gamma}
 
 transform:
   _target_: bridge_matching.transform.InpaintingTransform

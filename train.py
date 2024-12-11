@@ -71,7 +71,8 @@ def main(config: DictConfig):
         )
         logger.info(f"Trainable parameters {num_params}")
 
-    sampling_params = OmegaConf.to_container(config.sampler, resolve=True)
+    bridge = instantiate(config.bridge)
+    sampling_params = OmegaConf.to_container(config.sampling_params, resolve=True)
 
     trainer = Trainer(
         model,
@@ -84,6 +85,7 @@ def main(config: DictConfig):
         accelerator=accelerator,
         transform=transform,
         logger=logger,
+        bridge=bridge,
         sampling_params=sampling_params,
     )
 

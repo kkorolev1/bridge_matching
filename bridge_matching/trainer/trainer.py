@@ -19,6 +19,7 @@ class Trainer:
         accelerator,
         transform,
         logger,
+        bridge,
         sampling_params,
         skip_oom=True,
     ):
@@ -41,6 +42,7 @@ class Trainer:
         self.start_epoch = 1
         self.epochs = config.trainer.epochs
         self.accelerator = accelerator
+        self.bridge = bridge
         self.sampling_params = sampling_params
         if config.resume:
             self._resume_checkpoint(config.resume)
@@ -114,7 +116,7 @@ class Trainer:
     def train_step(self, batch, batch_idx):
         x_orig = batch
         x_trans = self.transform(x_orig)
-        loss_dict = self.criterion(self.model, x_orig, x_trans)
+        loss_dict = self.criterion(self.bridge, self.model, x_orig, x_trans)
         self.accelerator.backward(loss_dict["loss"])
         if self.accelerator.sync_gradients:
             self.accelerator.clip_grad_norm_(
@@ -150,7 +152,7 @@ class Trainer:
         x_orig = batch
         x_trans = self.transform(x_orig)
         x_pred, trajectory = sample_euler(
-            self.model, x_trans, self.sampling_params, save_history=True
+            self.bridge, self.model, x_trans, self.sampling_params, save_history=True
         )
         images = torch.cat([x_orig, x_trans, x_pred], dim=0)
         image_grid = make_grid(images, nrow=x_orig.shape[0])
