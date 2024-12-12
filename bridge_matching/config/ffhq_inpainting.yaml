@@ -17,12 +17,20 @@ model:
 
 bridge:
   _target_: bridge_matching.bridge.BrownianBridge
-  gamma: 0.5
+  gamma: 1e-4
 
 sampling_params:
   num_steps: 20
   vis_steps: 10
   timesteps: uniform
+
+# sampling_params:
+#   num_steps: 20
+#   vis_steps: 10
+#   timesteps: diffusion
+#   rho: 7
+#   sigma_max: 1
+#   sigma_min: 1e-4
 
 loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss

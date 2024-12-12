@@ -1,6 +1,7 @@
 from itertools import repeat
 from PIL import Image
 import torch
+import pandas as pd
 
 
 def inf_loop(dataloader):
@@ -19,3 +20,28 @@ def tensor_to_image(tensor):
         .detach()
         .numpy()
     )
+
+
+class MetricTracker:
+    def __init__(self, *keys, writer=None):
+        self.writer = writer
+        self._data = pd.DataFrame(index=keys, columns=["total", "counts", "average"])
+        self.reset()
+
+    def reset(self):
+        for col in self._data.columns:
+            self._data[col].values[:] = 0
+
+    def update(self, key, value, n=1):
+        self._data.total[key] += value * n
+        self._data.counts[key] += n
+        self._data.average[key] = self._data.total[key] / self._data.counts[key]
+
+    def avg(self, key):
+        return self._data.average[key]
+
+    def result(self):
+        return dict(self._data.average)
+
+    def keys(self):
+        return self._data.total.keys()

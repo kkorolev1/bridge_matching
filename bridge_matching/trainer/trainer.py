@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from torchvision.utils import make_grid
-from bridge_matching.utils import inf_loop, tensor_to_image
+from bridge_matching.utils import inf_loop, tensor_to_image, MetricTracker
 from bridge_matching.sampler import sample_euler
 
 
@@ -44,6 +44,7 @@ class Trainer:
         self.accelerator = accelerator
         self.bridge = bridge
         self.sampling_params = sampling_params
+        self.train_metrics = MetricTracker("loss", "grad_norm")
         if config.resume:
             self._resume_checkpoint(config.resume)
 
@@ -59,13 +60,15 @@ class Trainer:
         :return: A log that contains average loss and metric in this epoch.
         """
         self.model.train()
+        self.train_metrics.reset()
+        self.accelerator.log({"epoch": epoch}, step=self._global_step(epoch, 0))
 
         for batch_idx, batch in enumerate(
             tqdm(self.train_dataloader, desc="train", total=self.len_epoch)
         ):
             with self.accelerator.accumulate(self.model):  # grad accum
                 try:
-                    batch = self.train_step(batch, batch_idx)
+                    batch = self.train_step(batch, batch_idx, self.train_metrics)
                 except RuntimeError as e:
                     if "out of memory" in str(e) and self.skip_oom:
                         self.logger.warning("OOM on batch. Skipping batch.")
@@ -84,15 +87,13 @@ class Trainer:
                             epoch, self._progress(batch_idx), batch["loss"]
                         )
                     )
-                log_scalars = {
-                    "epoch": epoch,
-                    "loss": batch["loss"],
-                    "lr": self.lr_scheduler.get_last_lr()[0],
-                }
+                self._log_scalars(self.train_metrics, epoch, batch_idx)
                 self.accelerator.log(
-                    log_scalars, step=self.get_global_step(epoch, batch_idx)
+                    {"lr": self.lr_scheduler.get_last_lr()[0]},
+                    step=self._global_step(epoch, batch_idx),
                 )
-                self.log_images(batch, self.get_global_step(epoch, batch_idx))
+                self._log_images(batch, self._global_step(epoch, batch_idx))
+                self.train_metrics.reset()
 
             if batch_idx + 1 >= self.len_epoch:
                 break
@@ -100,9 +101,16 @@ class Trainer:
         for part, dataloader in self.evaluation_dataloaders.items():
             self._evaluation_epoch(epoch, part, dataloader)
 
-    def log_images(self, batch, step):
+    def _log_scalars(self, metric_tracker: MetricTracker, epoch, batch_idx):
+        for metric_name in metric_tracker.keys():
+            self.accelerator.log(
+                {f"{metric_name}": metric_tracker.avg(metric_name)},
+                step=self._global_step(epoch, batch_idx),
+            )
+
+    def _log_images(self, batch, step):
         images = torch.cat(
-            [batch["x_orig"], batch["x_trans"], batch["pred_vf"], batch["gt_cond_vf"]],
+            [batch["x_orig"], batch["x_trans"], batch["pred_vf"], batch["gt_vf"]],
             dim=0,
         )
         image_grid = make_grid(images, nrow=batch["x_orig"].shape[0])
@@ -110,10 +118,25 @@ class Trainer:
             {"train_grid": [tensor_to_image(image_grid)]}, step=step
         )
 
-    def get_global_step(self, epoch, batch_idx):
+    def _global_step(self, epoch, batch_idx):
         return (epoch - 1) * self.len_epoch + batch_idx
 
-    def train_step(self, batch, batch_idx):
+    @torch.no_grad()
+    def get_grad_norm(self, model, norm_type=2):
+        parameters = model.parameters()
+        if isinstance(parameters, torch.Tensor):
+            parameters = [parameters]
+        parameters = [p for p in parameters if p.grad is not None]
+
+        total_norm = torch.norm(
+            torch.stack(
+                [torch.norm(p.grad.detach(), norm_type).cpu() for p in parameters]
+            ),
+            norm_type,
+        )
+        return total_norm.item()
+
+    def train_step(self, batch, batch_idx, train_metrics):
         x_orig = batch
         x_trans = self.transform(x_orig)
         loss_dict = self.criterion(self.bridge, self.model, x_orig, x_trans)
@@ -124,9 +147,20 @@ class Trainer:
             )
         self.optimizer.step()
         self.lr_scheduler.step()
+        result_dict = {
+            "x_orig": x_orig,
+            "x_trans": x_trans,
+            "grad_norm": self.get_grad_norm(self.model),
+        }
         self.optimizer.zero_grad()
-        result_dict = {"x_orig": x_orig, "x_trans": x_trans}
         result_dict.update(loss_dict)
+
+        for metric_key in train_metrics.keys():
+            value = result_dict[metric_key]
+            train_metrics.update(
+                metric_key, value.item() if isinstance(value, torch.Tensor) else value
+            )
+
         return result_dict
 
     @torch.no_grad()
@@ -146,9 +180,9 @@ class Trainer:
             ):
                 # TODO: Calc FID
                 pass
-        self.log_test_batch(batch, epoch)
+        self._log_test_batch(batch, epoch)
 
-    def log_test_batch(self, batch, epoch, n_pictures_sampling=8):
+    def _log_test_batch(self, batch, epoch, n_pictures_sampling=8):
         x_orig = batch
         x_trans = self.transform(x_orig)
         x_pred, trajectory = sample_euler(
@@ -158,7 +192,7 @@ class Trainer:
         image_grid = make_grid(images, nrow=x_orig.shape[0])
         self.accelerator.trackers[0].log_images(
             {"test_grid": [tensor_to_image(image_grid)]},
-            step=self.get_global_step(epoch, self.len_epoch),
+            step=self._global_step(epoch, self.len_epoch),
         )
 
         trajectory_len = len(trajectory)
@@ -170,7 +204,7 @@ class Trainer:
         trajectory_grid = make_grid(trajectory, nrow=trajectory_len)
         self.accelerator.trackers[0].log_images(
             {"test_trajectory": [tensor_to_image(trajectory_grid)]},
-            step=self.get_global_step(epoch, self.len_epoch),
+            step=self._global_step(epoch, self.len_epoch),
         )
 
     def _progress(self, batch_idx):
