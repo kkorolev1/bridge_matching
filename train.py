@@ -74,6 +74,8 @@ def main(config: DictConfig):
     bridge = instantiate(config.bridge)
     sampling_params = OmegaConf.to_container(config.sampling_params, resolve=True)
 
+    metrics = [instantiate(metric_dict) for metric_dict in config.metrics]
+
     trainer = Trainer(
         model,
         loss_module,
@@ -87,6 +89,7 @@ def main(config: DictConfig):
         logger=logger,
         bridge=bridge,
         sampling_params=sampling_params,
+        metrics=metrics,
     )
 
     trainer.train()

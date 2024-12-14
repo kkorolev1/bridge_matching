@@ -4,3 +4,5 @@ edm/**
 outputs/**
 wandb/**
 logs/**
+*.png
+stats/*

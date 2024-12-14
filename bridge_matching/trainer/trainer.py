@@ -1,6 +1,9 @@
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
+from pathlib import Path
+import os
+import shutil
 from torchvision.utils import make_grid
 from bridge_matching.utils import inf_loop, tensor_to_image, MetricTracker
 from bridge_matching.sampler import sample_euler
@@ -21,6 +24,7 @@ class Trainer:
         logger,
         bridge,
         sampling_params,
+        metrics,
         skip_oom=True,
     ):
         self.model = model
@@ -44,7 +48,8 @@ class Trainer:
         self.accelerator = accelerator
         self.bridge = bridge
         self.sampling_params = sampling_params
-        self.train_metrics = MetricTracker("loss", "grad_norm")
+        self.metrics = metrics
+        self.train_metric_tracker = MetricTracker("loss", "grad_norm")
         if config.resume:
             self._resume_checkpoint(config.resume)
 
@@ -60,7 +65,7 @@ class Trainer:
         :return: A log that contains average loss and metric in this epoch.
         """
         self.model.train()
-        self.train_metrics.reset()
+        self.train_metric_tracker.reset()
         self.accelerator.log({"epoch": epoch}, step=self._global_step(epoch, 0))
 
         for batch_idx, batch in enumerate(
@@ -68,7 +73,7 @@ class Trainer:
         ):
             with self.accelerator.accumulate(self.model):  # grad accum
                 try:
-                    batch = self.train_step(batch, batch_idx, self.train_metrics)
+                    batch = self.train_step(batch, batch_idx, self.train_metric_tracker)
                 except RuntimeError as e:
                     if "out of memory" in str(e) and self.skip_oom:
                         self.logger.warning("OOM on batch. Skipping batch.")
@@ -87,19 +92,20 @@ class Trainer:
                             epoch, self._progress(batch_idx), batch["loss"]
                         )
                     )
-                self._log_scalars(self.train_metrics, epoch, batch_idx)
+                self._log_scalars(self.train_metric_tracker, epoch, batch_idx)
                 self.accelerator.log(
                     {"lr": self.lr_scheduler.get_last_lr()[0]},
                     step=self._global_step(epoch, batch_idx),
                 )
                 self._log_images(batch, self._global_step(epoch, batch_idx))
-                self.train_metrics.reset()
+                self.train_metric_tracker.reset()
 
             if batch_idx + 1 >= self.len_epoch:
                 break
 
-        for part, dataloader in self.evaluation_dataloaders.items():
-            self._evaluation_epoch(epoch, part, dataloader)
+        if self.accelerator.is_main_process:
+            for part, dataloader in self.evaluation_dataloaders.items():
+                self._evaluation_epoch(epoch, part, dataloader)
 
     def _log_scalars(self, metric_tracker: MetricTracker, epoch, batch_idx):
         for metric_name in metric_tracker.keys():
@@ -136,7 +142,7 @@ class Trainer:
         )
         return total_norm.item()
 
-    def train_step(self, batch, batch_idx, train_metrics):
+    def train_step(self, batch, batch_idx, metric_tracker):
         x_orig = batch
         x_trans = self.transform(x_orig)
         loss_dict = self.criterion(self.bridge, self.model, x_orig, x_trans)
@@ -155,9 +161,9 @@ class Trainer:
         self.optimizer.zero_grad()
         result_dict.update(loss_dict)
 
-        for metric_key in train_metrics.keys():
+        for metric_key in metric_tracker.keys():
             value = result_dict[metric_key]
-            train_metrics.update(
+            metric_tracker.update(
                 metric_key, value.item() if isinstance(value, torch.Tensor) else value
             )
 
@@ -172,14 +178,38 @@ class Trainer:
         :return: A log that contains information about validation
         """
         self.model.eval()
+        image_index = 1
+        images_dir = Path(self.config.trainer.images_dir)
+        if os.path.exists(images_dir):
+            shutil.rmtree(images_dir)
+        os.makedirs(images_dir, exist_ok=True)
+        fid_metric = self.metrics[0]  # hardcode it for now
         with torch.no_grad():
             for batch_idx, batch in tqdm(
                 enumerate(dataloader),
                 desc=part,
                 total=len(dataloader),
             ):
-                # TODO: Calc FID
-                pass
+                if image_index >= fid_metric.num_expected:
+                    break
+                x_orig = batch
+                x_trans = self.transform(x_orig)
+                x_pred, _ = sample_euler(
+                    self.bridge,
+                    self.model,
+                    x_trans,
+                    self.sampling_params,
+                    save_history=False,
+                )
+                for i in range(x_pred.shape[0]):
+                    image = tensor_to_image(x_pred[i])
+                    image.save(images_dir / f"{image_index}.png")
+                    image_index += 1
+        fid = fid_metric(images_dir)
+        self.accelerator.log(
+            {"FID": fid},
+            step=self._global_step(epoch, self.len_epoch),
+        )
         self._log_test_batch(batch, epoch)
 
     def _log_test_batch(self, batch, epoch, n_pictures_sampling=8):

@@ -17,10 +17,10 @@ model:
 
 bridge:
   _target_: bridge_matching.bridge.BrownianBridge
-  gamma: 1e-4
+  gamma: 0.01
 
 sampling_params:
-  num_steps: 20
+  num_steps: 50
   vis_steps: 10
   timesteps: uniform
 
@@ -70,16 +70,24 @@ data:
         train: false
         download: true
 
+metrics:
+  - _target_: bridge_matching.metric.FIDMetric
+    name: FID
+    ref_path: stats/colored_mnist
+    num_expected: 320
+    batch_size: ${batch_size}
+
 optimizer:
   _target_: torch.optim.Adam
-  lr: 1e-4
+  lr: 1e-3
 
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.ExponentialLR
-  gamma: 1
+  gamma: 0.9999995
 
 trainer:
-  log_step: 100
-  len_epoch: 1000
+  log_step: 200
+  len_epoch: 3000
   epochs: 30
   grad_norm_clip: 100
+  images_dir: predicted_images
