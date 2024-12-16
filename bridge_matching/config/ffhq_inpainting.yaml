@@ -20,7 +20,7 @@ bridge:
   gamma: 0.01
 
 sampling_params:
-  num_steps: 50
+  num_steps: 20
   vis_steps: 10
   timesteps: uniform
 
@@ -79,15 +79,17 @@ metrics:
 
 optimizer:
   _target_: torch.optim.Adam
-  lr: 1e-3
+  lr: 1e-4
 
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.ExponentialLR
-  gamma: 0.9999995
+  gamma: 1
 
 trainer:
   log_step: 200
-  len_epoch: 3000
+  save_epoch: 3
+  len_epoch: 1000
   epochs: 30
   grad_norm_clip: 100
-  images_dir: predicted_images
+  predictions_dir: predicted_images
+  output_dir: ./

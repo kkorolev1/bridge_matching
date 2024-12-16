@@ -2,6 +2,7 @@ from itertools import repeat
 from PIL import Image
 import torch
 import pandas as pd
+import copy
 
 
 def inf_loop(dataloader):
@@ -20,6 +21,20 @@ def tensor_to_image(tensor):
         .detach()
         .numpy()
     )
+
+
+def copy_to_cpu(x):
+    if isinstance(x, torch.Tensor):
+        return x.detach().to("cpu")
+    elif isinstance(x, dict):
+        result = dict()
+        for k, v in x.items():
+            result[k] = copy_to_cpu(v)
+        return result
+    elif isinstance(x, list):
+        return [copy_to_cpu(k) for k in x]
+    else:
+        return copy.deepcopy(x)
 
 
 class MetricTracker:

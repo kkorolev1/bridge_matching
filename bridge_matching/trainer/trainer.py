@@ -4,8 +4,11 @@ from tqdm import tqdm
 from pathlib import Path
 import os
 import shutil
+import dill
+import threading
+from hydra.core.hydra_config import HydraConfig
 from torchvision.utils import make_grid
-from bridge_matching.utils import inf_loop, tensor_to_image, MetricTracker
+from bridge_matching.utils import inf_loop, tensor_to_image, copy_to_cpu, MetricTracker
 from bridge_matching.sampler import sample_euler
 
 
@@ -43,19 +46,29 @@ class Trainer:
             k: v for k, v in dataloaders.items() if k != "train"
         }
         self.log_step = config.trainer.log_step
-        self.start_epoch = 1
+        self.save_epoch = config.trainer.save_epoch
+        self.epoch = 1
         self.epochs = config.trainer.epochs
         self.accelerator = accelerator
         self.bridge = bridge
         self.sampling_params = sampling_params
         self.metrics = metrics
         self.train_metric_tracker = MetricTracker("loss", "grad_norm")
+        self.output_dir = (
+            config.trainer.output_dir
+            if hasattr(config.trainer, "output_dir")
+            else HydraConfig.get().runtime.output_dir
+        )
         if config.resume:
-            self._resume_checkpoint(config.resume)
+            lastest_ckpt_path = self.get_checkpoint_path()
+            if lastest_ckpt_path.is_file():
+                self.logger.info(f"Resuming from checkpoint {lastest_ckpt_path}")
+                self.load_checkpoint(path=lastest_ckpt_path)
 
     def train(self):
-        for epoch in range(self.start_epoch, self.epochs + 1):
-            self._train_epoch(epoch)
+        while self.epoch < self.epochs + 1:
+            self._train_epoch(self.epoch)
+            self.epoch += 1
 
     def _train_epoch(self, epoch):
         """
@@ -106,6 +119,9 @@ class Trainer:
         if self.accelerator.is_main_process:
             for part, dataloader in self.evaluation_dataloaders.items():
                 self._evaluation_epoch(epoch, part, dataloader)
+
+        if (epoch - 1) % self.save_epoch == 0 and self.accelerator.is_main_process:
+            self.save_checkpoint()
 
     def _log_scalars(self, metric_tracker: MetricTracker, epoch, batch_idx):
         for metric_name in metric_tracker.keys():
@@ -179,10 +195,10 @@ class Trainer:
         """
         self.model.eval()
         image_index = 1
-        images_dir = Path(self.config.trainer.images_dir)
-        if os.path.exists(images_dir):
-            shutil.rmtree(images_dir)
-        os.makedirs(images_dir, exist_ok=True)
+        predictions_dir = Path(self.config.trainer.predictions_dir)
+        if os.path.exists(predictions_dir):
+            shutil.rmtree(predictions_dir)
+        os.makedirs(predictions_dir, exist_ok=True)
         fid_metric = self.metrics[0]  # hardcode it for now
         with torch.no_grad():
             for batch_idx, batch in tqdm(
@@ -203,9 +219,9 @@ class Trainer:
                 )
                 for i in range(x_pred.shape[0]):
                     image = tensor_to_image(x_pred[i])
-                    image.save(images_dir / f"{image_index}.png")
+                    image.save(predictions_dir / f"{image_index}.png")
                     image_index += 1
-        fid = fid_metric(images_dir)
+        fid = fid_metric(predictions_dir)
         self.accelerator.log(
             {"FID": fid},
             step=self._global_step(epoch, self.len_epoch),
@@ -247,6 +263,68 @@ class Trainer:
             total = self.len_epoch
         return base.format(current, total, 100.0 * current / total)
 
-    def __save_model(self):
-        self.accelerator.wait_for_everyone()
-        self.accelerator.save_model(self.model, self.config.trainer.save_dir)
+    def save_checkpoint(
+        self,
+        path=None,
+        tag="latest",
+        exclude_keys=None,
+        include_keys=None,
+        use_thread=True,
+    ):
+        if path is None:
+            path = Path(self.output_dir).joinpath("checkpoints", f"{tag}.ckpt")
+        else:
+            path = Path(path)
+        if exclude_keys is None:
+            exclude_keys = tuple()
+        if include_keys is None:
+            include_keys = tuple() + ("_output_dir",)
+
+        path.parent.mkdir(parents=False, exist_ok=True)
+        payload = {"config": self.config, "state_dicts": dict(), "pickles": dict()}
+
+        for key, value in self.__dict__.items():
+            if hasattr(value, "state_dict") and hasattr(value, "load_state_dict"):
+                # modules, optimizers and samplers etc
+                if key not in exclude_keys:
+                    if use_thread:
+                        payload["state_dicts"][key] = copy_to_cpu(value.state_dict())
+                    else:
+                        payload["state_dicts"][key] = value.state_dict()
+            elif key in include_keys:
+                payload["pickles"][key] = dill.dumps(value)
+        if use_thread:
+            self._saving_thread = threading.Thread(
+                target=lambda: torch.save(payload, path.open("wb"), pickle_module=dill)
+            )
+            self._saving_thread.start()
+        else:
+            torch.save(payload, path.open("wb"), pickle_module=dill)
+        return str(path.absolute())
+
+    def get_checkpoint_path(self, tag="latest"):
+        return Path(self.output_dir).joinpath("checkpoints", f"{tag}.ckpt")
+
+    def load_payload(self, payload, exclude_keys=None, include_keys=None, **kwargs):
+        if exclude_keys is None:
+            exclude_keys = tuple()
+        if include_keys is None:
+            include_keys = payload["pickles"].keys()
+
+        for key, value in payload["state_dicts"].items():
+            if key not in exclude_keys:
+                self.__dict__[key].load_state_dict(value, **kwargs)
+        for key in include_keys:
+            if key in payload["pickles"]:
+                self.__dict__[key] = dill.loads(payload["pickles"][key])
+
+    def load_checkpoint(
+        self, path=None, tag="latest", exclude_keys=None, include_keys=None, **kwargs
+    ):
+        if path is None:
+            path = self.get_checkpoint_path(tag=tag)
+        else:
+            path = Path(path)
+        payload = torch.load(path.open("rb"), pickle_module=dill, **kwargs)
+        self.load_payload(payload, exclude_keys=exclude_keys, include_keys=include_keys)
+        return payload

@@ -1,13 +1,15 @@
 import torch
 import torch.nn as nn
-from edm.training.networks import SongUNet
+from edm.training.networks import SongUNet, DhariwalUNet
 
 
 class UNet(nn.Module):
     def __init__(self, img_resolution=64):
         super().__init__()
         self.model = SongUNet(
-            img_resolution=img_resolution, in_channels=3, out_channels=3
+            img_resolution=img_resolution,
+            in_channels=3,
+            out_channels=3,
         )
 
     def forward(self, x, t):

@@ -6,3 +6,4 @@ wandb/**
 logs/**
 *.png
 stats/*
+checkpoints/*
