@@ -7,7 +7,7 @@ class BridgeMatchingLoss:
         self.timestep_sampler = timestep_sampler
 
     def __call__(self, bridge, model, x_orig, x_trans):
-        eps = 1e-5
+        eps = 1e-4
         t = self.timestep_sampler(x_orig.shape[0], x_orig.device)
         x_t = bridge.sample_t(x_orig, x_trans, t)
         pred = model(x_t, t)

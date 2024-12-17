@@ -20,13 +20,3 @@ class BridgeMatchingModel(nn.Module):
     def forward(self, x, t):
         class_labels = torch.zeros_like(t)
         return self.model(x=x, noise_labels=t, class_labels=class_labels)
-
-    def to_velocity(self, model_pred, x, t):
-        eps = 1e-5
-        if self.predict_type == "x_orig":
-            return (model_pred - x) / (1 - t[:, None, None, None] + eps)
-        elif self.predict_type == "velocity":
-            return model_pred
-
-    def velocity(self, x, t):
-        return self.to_velocity(self.forward(x, t), x, t)
