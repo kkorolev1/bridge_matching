@@ -93,6 +93,7 @@ lr_scheduler:
 
 trainer:
   log_step: 200
+  viz_step: 500
   save_epoch: 1
   len_epoch: 1000
   epochs: 30
