@@ -13,7 +13,6 @@ class WarmUpLRWithDecay(_LRScheduler):
         self.warmup_steps = warmup_steps
         self.max_lr = max_lr
         self.total_steps = total_steps
-        self.decay_strategy = decay_strategy.lower()
         assert decay_strategy in ["cosine", "exponential"]
         super().__init__(optimizer, last_epoch)
 
