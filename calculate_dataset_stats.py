@@ -30,9 +30,12 @@ def main(config: DictConfig):
 
     dataset = instantiate(config.dataset)
     images_dir = Path(config.images_dir)
+    output_dir = Path(config.output_path)
 
     if not images_dir.exists():
         os.makedirs(images_dir, exist_ok=True)
+    if not output_dir.exists():
+        os.makedirs(output_dir, exist_ok=True)
 
     for i in trange(len(dataset)):
         tensor_to_image(dataset[i]).save(images_dir / f"{i + 1}.png")
