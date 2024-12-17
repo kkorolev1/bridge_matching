@@ -201,7 +201,10 @@ class Trainer:
         """
         self.model.eval()
         image_index = 1
-        predictions_dir = Path(self.config.trainer.predictions_dir)
+        predictions_dir = (
+            Path(HydraConfig.get().runtime.output_dir)
+            / self.config.trainer.predictions_dir
+        )
         if os.path.exists(predictions_dir):
             shutil.rmtree(predictions_dir)
         os.makedirs(predictions_dir, exist_ok=True)
@@ -234,6 +237,8 @@ class Trainer:
             step=self._global_step(epoch, self.len_epoch),
         )
         self._log_test_batch(model, batch, epoch)
+        if os.path.exists(predictions_dir):
+            shutil.rmtree(predictions_dir)
 
     def _log_test_batch(self, model, batch, epoch, n_pictures_sampling=8):
         x_orig = batch
