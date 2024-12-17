@@ -86,7 +86,7 @@ optimizer:
   lr: 1e-4
 
 lr_scheduler:
-  _target_: bridge_mathcing.utils.WarmUpLRWithDecay
+  _target_: bridge_matching.utils.WarmUpLRWithDecay
   warmup_steps: 15000
   max_lr: 3e-4
   total_steps: 30000
