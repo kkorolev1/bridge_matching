@@ -166,7 +166,7 @@ class Trainer:
 
     def train_step(self, batch, batch_idx, metric_tracker):
         x_orig = batch
-        x_trans = self.transform(x_orig, random=True)
+        x_trans = self.transform(x_orig)
         loss_dict = self.criterion(self.bridge, self.model, x_orig, x_trans)
         self.accelerator.backward(loss_dict["loss"])
         if self.accelerator.sync_gradients:
