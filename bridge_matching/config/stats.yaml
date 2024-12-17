@@ -1,0 +1,11 @@
+images_dir: datasets/ffhq/test_images
+batch_size: 32
+output_path: stats/ffhq
+
+dataset:
+  # _target_: bridge_matching.dataset.ColoredMNIST
+  # root: datasets/colored_mnist
+  # train: false
+  # download: true
+  _target_: bridge_matching.dataset.FFHQDataset
+  root_dir: datasets/ffhq/test
