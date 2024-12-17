@@ -17,4 +17,4 @@ class BridgeMatchingLoss:
             gt = (x_orig - x_t) / (1 - t[:, None, None, None] + eps)
 
         loss = ((pred - gt) ** 2).mean()
-        return {"loss": loss, "pred": pred, "gt": gt}
+        return {"loss": loss, "pred": pred, "gt": gt, "x_t": x_t}

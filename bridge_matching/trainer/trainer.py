@@ -132,7 +132,13 @@ class Trainer:
 
     def _log_images(self, batch, step):
         images = torch.cat(
-            [batch["x_orig"], batch["x_trans"], batch["pred"], batch["gt"]],
+            [
+                batch["x_orig"],
+                batch["x_trans"],
+                batch["x_t"],
+                batch["pred"],
+                batch["gt"],
+            ],
             dim=0,
         )
         image_grid = make_grid(images, nrow=batch["x_orig"].shape[0])
@@ -160,7 +166,7 @@ class Trainer:
 
     def train_step(self, batch, batch_idx, metric_tracker):
         x_orig = batch
-        x_trans = self.transform(x_orig)
+        x_trans = self.transform(x_orig, random=True)
         loss_dict = self.criterion(self.bridge, self.model, x_orig, x_trans)
         self.accelerator.backward(loss_dict["loss"])
         if self.accelerator.sync_gradients:
