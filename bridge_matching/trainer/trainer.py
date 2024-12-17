@@ -86,7 +86,9 @@ class Trainer:
         ):
             with self.accelerator.accumulate(self.model):  # grad accum
                 try:
-                    batch = self.train_step(batch, batch_idx, self.train_metric_tracker)
+                    step_dict = self.train_step(
+                        batch, batch_idx, self.train_metric_tracker
+                    )
                 except RuntimeError as e:
                     if "out of memory" in str(e) and self.skip_oom:
                         self.logger.warning("OOM on batch. Skipping batch.")
@@ -102,7 +104,7 @@ class Trainer:
                 if self.accelerator.is_main_process:
                     self.logger.info(
                         "Train Epoch: {} {} Loss: {:.6f}".format(
-                            epoch, self._progress(batch_idx), batch["loss"]
+                            epoch, self._progress(batch_idx), step_dict["loss"]
                         )
                     )
                 self._log_scalars(self.train_metric_tracker, epoch, batch_idx)
@@ -110,8 +112,22 @@ class Trainer:
                     {"lr": self.lr_scheduler.get_last_lr()[0]},
                     step=self._global_step(epoch, batch_idx),
                 )
-                self._log_images(batch, self._global_step(epoch, batch_idx))
+                self._log_train_batch(
+                    step_dict, step=self._global_step(epoch, batch_idx)
+                )
                 self.train_metric_tracker.reset()
+
+            if (
+                batch_idx % self.config.trainer.viz_step == 0
+                and self.accelerator.is_main_process
+            ):
+                model = self.accelerator.unwrap_model(self.model)
+                self._log_predictions(
+                    model,
+                    batch,
+                    step=self._global_step(epoch, batch_idx),
+                    label="train",
+                )
 
             if batch_idx + 1 >= self.len_epoch:
                 break
@@ -122,29 +138,6 @@ class Trainer:
 
         if (epoch - 1) % self.save_epoch == 0 and self.accelerator.is_main_process:
             self.save_checkpoint()
-
-    def _log_scalars(self, metric_tracker: MetricTracker, epoch, batch_idx):
-        for metric_name in metric_tracker.keys():
-            self.accelerator.log(
-                {f"{metric_name}": metric_tracker.avg(metric_name)},
-                step=self._global_step(epoch, batch_idx),
-            )
-
-    def _log_images(self, batch, step):
-        images = torch.cat(
-            [
-                batch["x_orig"],
-                batch["x_trans"],
-                batch["x_t"],
-                batch["pred"],
-                batch["gt"],
-            ],
-            dim=0,
-        )
-        image_grid = make_grid(images, nrow=batch["x_orig"].shape[0])
-        self.accelerator.trackers[0].log_images(
-            {"train_grid": [tensor_to_image(image_grid)]}, step=step
-        )
 
     def _global_step(self, epoch, batch_idx):
         return (epoch - 1) * self.len_epoch + batch_idx
@@ -236,12 +229,38 @@ class Trainer:
             {"FID": fid},
             step=self._global_step(epoch, self.len_epoch),
         )
-        self._log_test_batch(model, batch, epoch)
+        self._log_predictions(
+            model, batch, step=self._global_step(epoch, self.len_epoch), label="test"
+        )
         if os.path.exists(predictions_dir):
             shutil.rmtree(predictions_dir)
 
-    def _log_test_batch(self, model, batch, epoch, n_pictures_sampling=8):
-        x_orig = batch
+    def _log_scalars(self, metric_tracker: MetricTracker, epoch, batch_idx):
+        for metric_name in metric_tracker.keys():
+            self.accelerator.log(
+                {f"{metric_name}": metric_tracker.avg(metric_name)},
+                step=self._global_step(epoch, batch_idx),
+            )
+
+    def _log_train_batch(self, step_dict, step):
+        images = torch.cat(
+            [
+                step_dict["x_orig"],
+                step_dict["x_trans"],
+                step_dict["x_t"],
+                step_dict["pred"],
+                step_dict["gt"],
+            ],
+            dim=0,
+        )
+        image_grid = make_grid(images, nrow=step_dict["x_orig"].shape[0])
+        self.accelerator.trackers[0].log_images(
+            {"train_grid": [tensor_to_image(image_grid)]}, step=step
+        )
+
+    def _log_predictions(
+        self, model, x_orig, step, label="train", n_pictures_sampling=8
+    ):
         x_trans = self.transform(x_orig)
         x_pred, trajectory = sample_euler(
             self.bridge, model, x_trans, self.sampling_params, save_history=True
@@ -249,8 +268,8 @@ class Trainer:
         images = torch.cat([x_orig, x_trans, x_pred], dim=0)
         image_grid = make_grid(images, nrow=x_orig.shape[0])
         self.accelerator.trackers[0].log_images(
-            {"test_grid": [tensor_to_image(image_grid)]},
-            step=self._global_step(epoch, self.len_epoch),
+            {f"{label}_predictions": [tensor_to_image(image_grid)]},
+            step=step,
         )
 
         trajectory_len = len(trajectory)
@@ -261,8 +280,8 @@ class Trainer:
         )
         trajectory_grid = make_grid(trajectory, nrow=trajectory_len)
         self.accelerator.trackers[0].log_images(
-            {"test_trajectory": [tensor_to_image(trajectory_grid)]},
-            step=self._global_step(epoch, self.len_epoch),
+            {f"{label}_trajectory": [tensor_to_image(trajectory_grid)]},
+            step=step,
         )
 
     def _progress(self, batch_idx):

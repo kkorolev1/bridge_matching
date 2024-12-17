@@ -37,48 +37,49 @@ loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss
   timestep_sampler: 
     _target_: bridge_matching.loss.LogitSampler
-    mean: -1
+    mean: 0
 
 transform:
   _target_: bridge_matching.transform.InpaintingTransform
-
-# data:
-#   train:
-#     batch_size: ${batch_size}
-#     num_workers: 5
-#     datasets:
-#       - _target_: bridge_matching.dataset.FFHQDataset
-#         root_dir: datasets/ffhq/train
-#   test:
-#     batch_size: ${batch_size}
-#     num_workers: 5
-#     datasets:
-#       - _target_: bridge_matching.dataset.FFHQDataset
-#         root_dir: datasets/ffhq/test
 
 data:
   train:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: bridge_matching.dataset.ColoredMNIST
-        root: datasets/colored_mnist
-        train: true
-        download: true
+      - _target_: bridge_matching.dataset.FFHQDataset
+        root_dir: datasets/ffhq/train
   test:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: bridge_matching.dataset.ColoredMNIST
-        root: datasets/colored_mnist
-        train: false
-        download: true
+      - _target_: bridge_matching.dataset.FFHQDataset
+        root_dir: datasets/ffhq/test
+
+# data:
+#   train:
+#     batch_size: ${batch_size}
+#     num_workers: 5
+#     datasets:
+#       - _target_: bridge_matching.dataset.ColoredMNIST
+#         root: datasets/colored_mnist
+#         train: true
+#         download: true
+#   test:
+#     batch_size: ${batch_size}
+#     num_workers: 5
+#     datasets:
+#       - _target_: bridge_matching.dataset.ColoredMNIST
+#         root: datasets/colored_mnist
+#         train: false
+#         download: true
 
 metrics:
   - _target_: bridge_matching.metric.FIDMetric
     name: FID
-    ref_path: stats/colored_mnist
-    num_expected: 1600
+    # ref_path: stats/colored_mnist
+    ref_path: stats/ffhq
+    num_expected: 3200
     batch_size: ${batch_size}
 
 optimizer:
@@ -91,16 +92,17 @@ optimizer:
 
 lr_scheduler:
   _target_: bridge_matching.utils.scheduler.WarmUpLRWithDecay
-  warmup_steps: 5000
+  warmup_steps: 10000
   max_lr: 1e-4
-  total_steps: 30000
+  total_steps: 50000
   
 
 trainer:
   log_step: 200
+  viz_step: 500
   save_epoch: 1
-  len_epoch: 1000
-  epochs: 30
+  len_epoch: 5000
+  epochs: 10
   grad_norm_clip: 100
   predictions_dir: predicted_images
   output_dir: ./
