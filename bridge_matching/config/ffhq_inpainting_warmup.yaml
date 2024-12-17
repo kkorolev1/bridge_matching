@@ -1,0 +1,101 @@
+task_name: ffhq_inpainting
+batch_size: 32
+resume: false
+
+logging:
+  debug: false
+  project: bridge_matching
+  #resume: False
+  mode: online
+  name: ${now:%Y.%m.%d-%H.%M.%S}_${task_name}
+  tags: ["${task_name}"]
+  id: null
+  group: null
+
+model: 
+  _target_: bridge_matching.model.BridgeMatchingModel
+  predict_type: x_orig
+
+bridge:
+  _target_: bridge_matching.bridge.BrownianBridge
+  gamma: 0.9
+
+sampling_params:
+  num_steps: 20
+  vis_steps: 10
+  timesteps: uniform
+
+# sampling_params:
+#   num_steps: 20
+#   vis_steps: 10
+#   timesteps: diffusion
+#   rho: 7
+#   sigma_max: 1
+#   sigma_min: 1e-2
+
+loss:
+  _target_: bridge_matching.loss.BridgeMatchingLoss
+  timestep_sampler: 
+    _target_: bridge_matching.loss.LogitSampler
+    mean: -1
+
+transform:
+  _target_: bridge_matching.transform.InpaintingTransform
+
+# data:
+#   train:
+#     batch_size: ${batch_size}
+#     num_workers: 5
+#     datasets:
+#       - _target_: bridge_matching.dataset.FFHQDataset
+#         root_dir: datasets/ffhq/train
+#   test:
+#     batch_size: ${batch_size}
+#     num_workers: 5
+#     datasets:
+#       - _target_: bridge_matching.dataset.FFHQDataset
+#         root_dir: datasets/ffhq/test
+
+data:
+  train:
+    batch_size: ${batch_size}
+    num_workers: 5
+    datasets:
+      - _target_: bridge_matching.dataset.ColoredMNIST
+        root: datasets/colored_mnist
+        train: true
+        download: true
+  test:
+    batch_size: ${batch_size}
+    num_workers: 5
+    datasets:
+      - _target_: bridge_matching.dataset.ColoredMNIST
+        root: datasets/colored_mnist
+        train: false
+        download: true
+
+metrics:
+  - _target_: bridge_matching.metric.FIDMetric
+    name: FID
+    ref_path: stats/colored_mnist
+    num_expected: 1600
+    batch_size: ${batch_size}
+
+optimizer:
+  _target_: torch.optim.Adam
+  lr: 1e-4
+
+lr_scheduler:
+  _target_: bridge_mathcing.utils.WarmUpLRWithDecay
+  warmup_steps: 15000
+  max_lr: 3e-4
+  total_steps: 30000
+
+trainer:
+  log_step: 200
+  save_epoch: 1
+  len_epoch: 1000
+  epochs: 30
+  grad_norm_clip: 100
+  predictions_dir: predicted_images
+  output_dir: ./
