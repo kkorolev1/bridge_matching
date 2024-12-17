@@ -18,7 +18,7 @@ model:
 
 bridge:
   _target_: bridge_matching.bridge.BrownianBridge
-  gamma: 0.01
+  gamma: 0.9
 
 sampling_params:
   num_steps: 20
@@ -37,7 +37,7 @@ loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss
   timestep_sampler: 
     _target_: bridge_matching.loss.LogitSampler
-    mean: -2
+    mean: -1
 
 transform:
   _target_: bridge_matching.transform.InpaintingTransform
@@ -82,9 +82,8 @@ metrics:
     batch_size: ${batch_size}
 
 optimizer:
-  _target_: torch.optim.AdamW
+  _target_: torch.optim.Adam
   lr: 1e-4
-  weight_decay: 1e-3
 
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.ExponentialLR
