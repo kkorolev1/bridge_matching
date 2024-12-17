@@ -1,0 +1,9 @@
+images_dir: datasets/colored_mnist/test_images
+batch_size: 32
+output_path: stats/colored_mnist
+
+dataset:
+  _target_: bridge_matching.dataset.ColoredMNIST
+  root: datasets/colored_mnist
+  train: false
+  download: true
