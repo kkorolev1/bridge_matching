@@ -61,7 +61,7 @@ def main(config: DictConfig):
     for k, v in zip(dataloaders.keys(), accelerator.prepare(*dataloaders.values())):
         dataloaders[k] = v
     device = model.device
-    # accelerator.register_for_checkpointing(lr_scheduler)
+
     if accelerator.is_main_process:
         num_params = sum(
             [

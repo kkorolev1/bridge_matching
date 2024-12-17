@@ -3,7 +3,7 @@ import torch
 
 def get_timesteps_uniform(params, device):
     num_steps = params["num_steps"]
-    return torch.linspace(1e-4, 1, num_steps + 1, device=device)
+    return torch.linspace(1e-2, 1, num_steps + 1, device=device)
 
 
 def get_timesteps_diff(params, device):

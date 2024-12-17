@@ -1,3 +1,3 @@
-from .unet import UNet
+from .model import BridgeMatchingModel
 
-__all__ = ["UNet"]
+__all__ = ["BridgeMatchingModel"]

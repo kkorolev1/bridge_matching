@@ -13,7 +13,8 @@ logging:
   group: null
 
 model: 
-  _target_: bridge_matching.model.UNet
+  _target_: bridge_matching.model.BridgeMatchingModel
+  predict_type: x_orig
 
 bridge:
   _target_: bridge_matching.bridge.BrownianBridge
@@ -30,10 +31,13 @@ sampling_params:
 #   timesteps: diffusion
 #   rho: 7
 #   sigma_max: 1
-#   sigma_min: 1e-4
+#   sigma_min: 1e-2
 
 loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss
+  timestep_sampler: 
+    _target_: bridge_matching.loss.LogitSampler
+    mean: -2
 
 transform:
   _target_: bridge_matching.transform.InpaintingTransform
@@ -74,12 +78,13 @@ metrics:
   - _target_: bridge_matching.metric.FIDMetric
     name: FID
     ref_path: stats/colored_mnist
-    num_expected: 320
+    num_expected: 1600
     batch_size: ${batch_size}
 
 optimizer:
-  _target_: torch.optim.Adam
+  _target_: torch.optim.AdamW
   lr: 1e-4
+  weight_decay: 1e-3
 
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.ExponentialLR
@@ -87,7 +92,7 @@ lr_scheduler:
 
 trainer:
   log_step: 200
-  save_epoch: 3
+  save_epoch: 1
   len_epoch: 1000
   epochs: 30
   grad_norm_clip: 100

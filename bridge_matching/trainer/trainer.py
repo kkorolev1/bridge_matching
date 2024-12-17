@@ -132,7 +132,7 @@ class Trainer:
 
     def _log_images(self, batch, step):
         images = torch.cat(
-            [batch["x_orig"], batch["x_trans"], batch["pred_vf"], batch["gt_vf"]],
+            [batch["x_orig"], batch["x_trans"], batch["pred"], batch["gt"]],
             dim=0,
         )
         image_grid = make_grid(images, nrow=batch["x_orig"].shape[0])
@@ -200,6 +200,7 @@ class Trainer:
             shutil.rmtree(predictions_dir)
         os.makedirs(predictions_dir, exist_ok=True)
         fid_metric = self.metrics[0]  # hardcode it for now
+        model = self.accelerator.unwrap_model(self.model)
         with torch.no_grad():
             for batch_idx, batch in tqdm(
                 enumerate(dataloader),
@@ -212,7 +213,7 @@ class Trainer:
                 x_trans = self.transform(x_orig)
                 x_pred, _ = sample_euler(
                     self.bridge,
-                    self.model,
+                    model,
                     x_trans,
                     self.sampling_params,
                     save_history=False,
@@ -226,13 +227,13 @@ class Trainer:
             {"FID": fid},
             step=self._global_step(epoch, self.len_epoch),
         )
-        self._log_test_batch(batch, epoch)
+        self._log_test_batch(model, batch, epoch)
 
-    def _log_test_batch(self, batch, epoch, n_pictures_sampling=8):
+    def _log_test_batch(self, model, batch, epoch, n_pictures_sampling=8):
         x_orig = batch
         x_trans = self.transform(x_orig)
         x_pred, trajectory = sample_euler(
-            self.bridge, self.model, x_trans, self.sampling_params, save_history=True
+            self.bridge, model, x_trans, self.sampling_params, save_history=True
         )
         images = torch.cat([x_orig, x_trans, x_pred], dim=0)
         image_grid = make_grid(images, nrow=x_orig.shape[0])

@@ -25,8 +25,7 @@ def sample_euler(bridge, model, noise, params, save_history=False):
             t_next = t_steps[i + 1]
             t_net = t_steps[i] * torch.ones(x.shape[0], device=noise.device)
             t_delta = t_next - t_cur
-            model_pred = model(x, t_net)
-            mean = model_pred * t_delta
+            mean = model.velocity(x, t_net) * t_delta
             std = bridge.diffusion_coef(t_net) * torch.sqrt(t_delta)
             x = x + mean + std[:, None, None, None] * torch.randn_like(x)
             if save_history:
