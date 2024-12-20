@@ -43,7 +43,7 @@ def main(config: DictConfig):
     st_dct = load_st_dct(path_to_model)
     model = instantiate(config.model)
     model.load_state_dict(st_dct)
-    
+    model = model.cuda()
     bridge = instantiate(config.bridge)
     transform = instantiate(config.transform)
     sampling_params = config.sampling_params
@@ -64,7 +64,7 @@ def main(config: DictConfig):
             desc="Calc FID",
             total=len(dataloader),
         ):
-            x_orig = batch
+            x_orig = batch.cuda()
             x_trans = transform(x_orig)
             x_pred, _ = sample_euler(
                 bridge,
