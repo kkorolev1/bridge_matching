@@ -1,0 +1,38 @@
+batch_size: 32
+
+model: 
+  _target_: bridge_matching.model.BridgeMatchingModel
+  predict_type: x_orig
+
+bridge:
+  _target_: bridge_matching.bridge.BrownianBridge
+  gamma: 0.9
+
+sampling_params:
+  num_steps: 20
+  vis_steps: 10
+  timesteps: uniform
+
+transform:
+  _target_: bridge_matching.transform.InpaintingTransform
+
+
+images_dir: datasets/colored_mnist/predict_images
+
+metrics:
+  - _target_: bridge_matching.metric.FIDMetric
+    name: FID
+    ref_path: stats/colored_mnist
+    num_expected: 10000
+    batch_size: ${batch_size}
+
+data:
+  test:
+    batch_size: ${batch_size}
+    num_workers: 5
+    datasets:
+      - _target_: bridge_matching.dataset.ColoredMNIST
+        root: datasets/colored_mnist
+        train: false
+        download: true
+
