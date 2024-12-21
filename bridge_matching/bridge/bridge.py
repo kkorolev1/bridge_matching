@@ -9,6 +9,13 @@ class Bridge:
         raise NotImplementedError
 
     def velocity(self, model, x, t):
+        model_pred = model(x, t)
+        if model.predict_type == "x_orig":
+            return self.to_velocity(model_pred, x, t)
+        elif model.predict_type == "velocity":
+            return model_pred
+
+    def to_velocity(self, x_orig, x, t):
         raise NotImplementedError
 
     def diffusion_coef(self, t):
@@ -49,17 +56,13 @@ class GeneralizedBrownianBridge(Bridge):
         x_t = mean + std[:, None, None, None] * torch.randn_like(x_orig)
         return x_t
 
-    def velocity(self, model, x, t):
+    def to_velocity(self, x_orig, x, t):
         eps = 1e-4
-        model_pred = model(x, t)
-        if model.predict_type == "x_orig":
-            return (
-                self.schedule.beta_t(t)[:, None, None, None]
-                * (model_pred - x)
-                / (self.schedule.sigma2_bar_t(t)[:, None, None, None] + eps)
-            )
-        elif model.predict_type == "velocity":
-            return model_pred
+        return (
+            self.schedule.beta_t(t)[:, None, None, None]
+            * (x_orig - x)
+            / (self.schedule.sigma2_bar_t(t)[:, None, None, None] + eps)
+        )
 
     def diffusion_coef(self, t):
         return torch.sqrt(self.schedule.beta_t(t))
@@ -75,13 +78,9 @@ class BrownianBridge(Bridge):
         x_t = mean + std[:, None, None, None] * torch.randn_like(x_orig)
         return x_t
 
-    def velocity(self, model, x, t):
+    def to_velocity(self, x_orig, x, t):
         eps = 1e-4
-        model_pred = model(x, t)
-        if model.predict_type == "x_orig":
-            return (model_pred - x) / (1 - t[:, None, None, None] + eps)
-        elif model.predict_type == "velocity":
-            return model_pred
+        return (x_orig - x) / (1 - t[:, None, None, None] + eps)
 
     def diffusion_coef(self, t):
         return math.sqrt(self.gamma) * torch.ones_like(t)
@@ -92,13 +91,9 @@ class FlowMatching(Bridge):
         mean = t[:, None, None, None] * x_orig + (1 - t[:, None, None, None]) * x_trans
         return mean
 
-    def velocity(self, model, x, t):
+    def to_velocity(self, x_orig, x, t):
         eps = 1e-4
-        model_pred = model(x, t)
-        if model.predict_type == "x_orig":
-            return (model_pred - x) / (1 - t[:, None, None, None] + eps)
-        elif model.predict_type == "velocity":
-            return model_pred
+        return (x_orig - x) / (1 - t[:, None, None, None] + eps)
 
     def diffusion_coef(self, t):
         return torch.zeros_like(t)
