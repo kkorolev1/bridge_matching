@@ -1,5 +1,5 @@
 task_name: ffhq_inpainting
-batch_size: 32
+batch_size: 64
 resume: false
 
 logging:
@@ -20,11 +20,14 @@ model:
 #   _target_: bridge_matching.bridge.BrownianBridge
 #   gamma: 0.1
 
+# bridge:
+#   _target_: bridge_matching.bridge.GeneralizedBrownianBridge
+#   schedule:
+#     _target_: bridge_matching.bridge.schedule.TriangularSchedule
+#     beta_max: 0.2
+
 bridge:
-  _target_: bridge_matching.bridge.GeneralizedBrownianBridge
-  schedule:
-    _target_: bridge_matching.bridge.schedule.TriangularSchedule
-    beta_max: 1e-4
+  _target_: bridge_matching.bridge.FlowMatching
 
 sampling_params:
   num_steps: 20
@@ -47,51 +50,51 @@ loss:
 
 transform:
   _target_: bridge_matching.transform.InpaintingTransform
-
-# data:
-#   train:
-#     batch_size: ${batch_size}
-#     num_workers: 5
-#     datasets:
-#       - _target_: bridge_matching.dataset.FFHQDataset
-#         root_dir: datasets/ffhq/train
-#   test:
-#     batch_size: ${batch_size}
-#     num_workers: 5
-#     datasets:
-#       - _target_: bridge_matching.dataset.FFHQDataset
-#         root_dir: datasets/ffhq/test
+  noise_std: 0
 
 data:
   train:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: bridge_matching.dataset.ColoredMNIST
-        root: datasets/colored_mnist
-        train: true
-        download: true
+      - _target_: bridge_matching.dataset.FFHQDataset
+        root_dir: datasets/ffhq/train
   test:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: bridge_matching.dataset.ColoredMNIST
-        root: datasets/colored_mnist
-        train: false
-        download: true
+      - _target_: bridge_matching.dataset.FFHQDataset
+        root_dir: datasets/ffhq/test
+
+# data:
+#   train:
+#     batch_size: ${batch_size}
+#     num_workers: 5
+#     datasets:
+#       - _target_: bridge_matching.dataset.ColoredMNIST
+#         root: datasets/colored_mnist
+#         train: true
+#         download: true
+#   test:
+#     batch_size: ${batch_size}
+#     num_workers: 5
+#     datasets:
+#       - _target_: bridge_matching.dataset.ColoredMNIST
+#         root: datasets/colored_mnist
+#         train: false
+#         download: true
 
 metrics:
   - _target_: bridge_matching.metric.FIDMetric
     name: FID
-    ref_path: stats/colored_mnist
-    # ref_path: stats/ffhq
+    # ref_path: stats/colored_mnist
+    ref_path: stats/ffhq
     num_expected: 3200
     batch_size: ${batch_size}
 
 optimizer:
-  _target_: torch.optim.AdamW
+  _target_: torch.optim.Adam
   lr: 0
-  weight_decay: 0.1
 
 # lr_scheduler:
 #   _target_: torch.optim.lr_scheduler.ExponentialLR
@@ -100,16 +103,17 @@ optimizer:
 lr_scheduler:
   _target_: bridge_matching.utils.scheduler.WarmUpLRWithDecay
   warmup_steps: 10000
-  max_lr: 1e-4
-  total_steps: 50000
+  max_lr: 0.0001
+  total_steps: 200000
+  decay_rate: 0.99995
   
 
 trainer:
   log_step: 200
   viz_step: 500
   save_epoch: 1
-  len_epoch: 5000
-  epochs: 10
+  len_epoch: 4000
+  epochs: 50
   grad_norm_clip: 100
   predictions_dir: predicted_images
   output_dir: ./

@@ -242,18 +242,18 @@ class Trainer:
                 step=self._global_step(epoch, batch_idx),
             )
 
-    def _log_train_batch(self, step_dict, step):
+    def _log_train_batch(self, step_dict, step, n_pictures_sampling=8):
         images = torch.cat(
             [
-                step_dict["x_orig"],
-                step_dict["x_trans"],
-                step_dict["x_t"],
-                step_dict["pred"],
-                step_dict["gt"],
+                step_dict["x_orig"][:n_pictures_sampling],
+                step_dict["x_trans"][:n_pictures_sampling],
+                step_dict["x_t"][:n_pictures_sampling],
+                step_dict["pred"][:n_pictures_sampling],
+                step_dict["gt"][:n_pictures_sampling],
             ],
             dim=0,
         )
-        image_grid = make_grid(images, nrow=step_dict["x_orig"].shape[0])
+        image_grid = make_grid(images, nrow=n_pictures_sampling)
         self.accelerator.trackers[0].log_images(
             {"train_grid": [tensor_to_image(image_grid)]}, step=step
         )
@@ -265,8 +265,15 @@ class Trainer:
         x_pred, trajectory = sample_euler(
             self.bridge, model, x_trans, self.sampling_params, save_history=True
         )
-        images = torch.cat([x_orig, x_trans, x_pred], dim=0)
-        image_grid = make_grid(images, nrow=x_orig.shape[0])
+        images = torch.cat(
+            [
+                x_orig[:n_pictures_sampling],
+                x_trans[:n_pictures_sampling],
+                x_pred[:n_pictures_sampling],
+            ],
+            dim=0,
+        )
+        image_grid = make_grid(images, nrow=n_pictures_sampling)
         self.accelerator.trackers[0].log_images(
             {f"{label}_predictions": [tensor_to_image(image_grid)]},
             step=step,
@@ -303,7 +310,9 @@ class Trainer:
         use_thread=True,
     ):
         if path is None:
-            path = Path(self.output_dir).joinpath("checkpoints", f"{tag}.ckpt")
+            path = Path(self.output_dir).joinpath(
+                "checkpoints", f"{self.config.logging.name}_{tag}.ckpt"
+            )
         else:
             path = Path(path)
         if exclude_keys is None:

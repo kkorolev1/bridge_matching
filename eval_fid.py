@@ -5,24 +5,26 @@ import os
 import numpy as np
 import torch
 from pathlib import Path
-import pickle
 import shutil
 import hydra
 from tqdm import tqdm
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
+import dill
+
 from bridge_matching.dataset.dataloader import get_dataloaders
 from bridge_matching.utils import tensor_to_image
-from bridge_matching.metric.fid import calculate_inception_stats
 from bridge_matching.sampler import sample_euler
+
 warnings.filterwarnings("ignore", category=UserWarning)
-import dill
+
 # fix random seeds for reproducibility
 SEED = 42
 torch.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
+
 
 def load_st_dct(path):
     payload = torch.load(Path(path).open("rb"), pickle_module=dill)
@@ -57,11 +59,11 @@ def main(config: DictConfig):
     if os.path.exists(images_dir):
         shutil.rmtree(images_dir)
     os.makedirs(images_dir, exist_ok=True)
-    
+
     with torch.no_grad():
         for batch_idx, batch in tqdm(
             enumerate(dataloader),
-            desc="Calc FID",
+            desc="Calculating FID",
             total=len(dataloader),
         ):
             x_orig = batch.cuda()
@@ -79,8 +81,7 @@ def main(config: DictConfig):
                 image_index += 1
         fid = fid_metric(images_dir)
         print(f"FID: {fid}")
-    
-        
+
         if os.path.exists(images_dir):
             shutil.rmtree(images_dir)
 

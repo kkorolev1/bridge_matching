@@ -4,7 +4,8 @@ from .timesteps import get_timesteps_uniform, get_timesteps_diff
 
 
 def normalize(x):
-    return x / x.abs().max(dim=0)[0][None, ...]
+    return x
+    # return x / x.abs().max(dim=0)[0][None, ...]
 
 
 def sample_euler(bridge, model, noise, params, save_history=False):
