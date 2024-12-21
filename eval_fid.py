@@ -26,7 +26,7 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
 
-def load_st_dct(path):
+def load_state_dict(path):
     payload = torch.load(Path(path).open("rb"), pickle_module=dill)
     state_dict = payload["state_dicts"]["model"]
     new_state_dict = {}
@@ -41,10 +41,10 @@ def load_st_dct(path):
 @torch.inference_mode
 def main(config: DictConfig):
     OmegaConf.resolve(config)
-    path_to_model = Path(config.path_to_model)
-    st_dct = load_st_dct(path_to_model)
+    checkpoint_path = Path(config.checkpoint_path)
+    state_dict = load_state_dict(checkpoint_path)
     model = instantiate(config.model)
-    model.load_state_dict(st_dct)
+    model.load_state_dict(state_dict)
     model = model.cuda()
     bridge = instantiate(config.bridge)
     transform = instantiate(config.transform)

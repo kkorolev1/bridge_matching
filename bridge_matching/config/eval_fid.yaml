@@ -1,4 +1,4 @@
-batch_size: 32
+batch_size: 64
 
 model: 
   _target_: bridge_matching.model.BridgeMatchingModel
@@ -6,23 +6,27 @@ model:
 
 bridge:
   _target_: bridge_matching.bridge.BrownianBridge
-  gamma: 0.9
+  gamma: 0.1
 
 sampling_params:
-  num_steps: 20
+  num_steps: 50
   vis_steps: 10
-  timesteps: uniform
+  timesteps: diffusion
+  rho: 10
+  sigma_max: 1
+  sigma_min: 1e-2
 
 transform:
   _target_: bridge_matching.transform.InpaintingTransform
 
 
-images_dir: datasets/colored_mnist/predict_images
+images_dir: datasets/ffhq/predict_images
+checkpoint_path: checkpoints/2024.12.21-04.20.15_ffhq_inpainting_latest.ckpt
 
 metrics:
   - _target_: bridge_matching.metric.FIDMetric
     name: FID
-    ref_path: stats/colored_mnist
+    ref_path: stats/ffhq
     num_expected: 10000
     batch_size: ${batch_size}
 
@@ -31,8 +35,6 @@ data:
     batch_size: ${batch_size}
     num_workers: 5
     datasets:
-      - _target_: bridge_matching.dataset.ColoredMNIST
-        root: datasets/colored_mnist
-        train: false
-        download: true
+      - _target_: bridge_matching.dataset.FFHQDataset
+        root_dir: datasets/ffhq/test
 

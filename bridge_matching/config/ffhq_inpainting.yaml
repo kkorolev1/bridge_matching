@@ -29,18 +29,18 @@ model:
 bridge:
   _target_: bridge_matching.bridge.FlowMatching
 
-sampling_params:
-  num_steps: 20
-  vis_steps: 10
-  timesteps: uniform
-
 # sampling_params:
 #   num_steps: 20
 #   vis_steps: 10
-#   timesteps: diffusion
-#   rho: 7
-#   sigma_max: 1
-#   sigma_min: 1e-2
+#   timesteps: uniform
+
+sampling_params:
+  num_steps: 50
+  vis_steps: 10
+  timesteps: diffusion
+  rho: 10
+  sigma_max: 1
+  sigma_min: 1e-2
 
 loss:
   _target_: bridge_matching.loss.BridgeMatchingLoss
